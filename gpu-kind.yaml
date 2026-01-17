@@ -1,0 +1,15 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+  # This patch allows the node to use the nvidia runtime
+  kubeadmConfigPatches:
+  - |
+    kind: JoinConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        node-labels: "nvidia.com/gpu=true"
+  # This part is critical for Docker Desktop / WSL2 GPU passthrough
+  extraMounts:
+    - hostPath: /usr/lib/wsl
+      containerPath: /usr/lib/wsl

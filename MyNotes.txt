@@ -1,0 +1,70 @@
+
+kind delete cluster -n desktop
+=========== gpu-kind.yaml =================
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+  # This patch allows the node to use the nvidia runtime
+  kubeadmConfigPatches:
+  - |
+    kind: JoinConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        node-labels: "nvidia.com/gpu=true"
+  # This part is critical for Docker Desktop / WSL2 GPU passthrough
+  extraMounts:
+    - hostPath: /usr/lib/wsl
+      containerPath: /usr/lib/wsl
+
+============================
+
+#kind create cluster --image=kindest/node:v1.33.1
+
+
+kind create cluster --config gpu-kind.yaml
+
+
+
+helm repo add kuberay https://ray-project.github.io/kuberay-helm/
+helm repo update
+
+helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
+helm repo add nvdp https://nvidia.github.io/k8s-device-plugin
+helm repo update
+
+# Install both CRDs and KubeRay operator v1.5.1 and gpu-operator v1.13.1:
+#helm install gpu-operator nvidia/gpu-operator  --namespace default --set operator.defaultRuntime=containerd -namespace default
+helm install kuberay-operator kuberay/kuberay-operator --version 1.5.1  --namespace default
+
+# Install the NVIDIA device plugin with GPU feature discovery enabled:
+helm install nvidia-device-plugin nvdp/nvidia-device-plugin --set gfd.enabled=true  --namespace default  --set allowDefaultNamespace=true
+
+# Deploy a sample RayCluster CR from the KubeRay Helm chart repo:
+helm install raycluster kuberay/ray-cluster --version 1.5.1 --namespace default --set rayClusterName=my-ray-cluster --set worker.replicas=4 --set head.cpu=2 --set head.memory=4Gi --set worker.cpu=2 --set worker.memory=24Gi --set worker.gpu.enabled=true --set worker.gpu.count=1
+
+
+# Once the RayCluster CR has been created, you can view it by running:
+kubectl get rayclusters
+
+# View the pods in the RayCluster named "raycluster-kuberay"
+kubectl get pods --selector=ray.io/cluster=raycluster-kuberay
+
+# View the Ray head pod name
+kubectl get pods --selector=ray.io/node-type=head -o custom-columns=POD:metadata.name --no-headers
+
+# Print the cluster resources.
+kubectl exec -it {HEAD_POD_NAME} -- python -c "import ray; ray.init(); print(ray.cluster_resources())"
+
+# To access the Ray dashboard, you can port-forward the Ray head service to your local machine:
+# Execute this in a separate shell.
+kubectl port-forward service/raycluster-kuberay-head-svc 8265:8265 > /dev/null &
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,68 @@
+apiVersion: ray.io/v1
+kind: RayCluster
+metadata:
+  name: raycluster-gpu
+spec:
+  # The version of Ray you are using
+  rayVersion: '2.9.0'
+
+  #############################################################################
+  # HEAD NODE CONFIGURATION
+  #############################################################################
+  headGroupSpec:
+    rayStartParams:
+      dashboard-host: '0.0.0.0'
+      # Explicitly tell Ray the head node has 1 GPU
+      num-gpus: '1'
+    template:
+      spec:
+        containers:
+        - name: ray-head
+          image: rayproject/ray:latest-gpu
+          ports:
+          - containerPort: 6379
+            name: gcs-server
+          - containerPort: 8265
+            name: dashboard
+          - containerPort: 10001
+            name: client
+          resources:
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+              # Pass GPU through to the head container
+              nvidia.com/gpu: "1"
+            requests:
+              cpu: "2"
+              memory: "4Gi"
+              nvidia.com/gpu: "1"
+          env:
+          - name: RAY_GRAFANA_IFRAME_HOST
+            value: http://127.0.0.1:3000
+          - name: RAY_PROMETHEUS_HOST
+            value: http://prometheus-server.prometheus-system.svc.cluster.local:9090
+
+  #############################################################################
+  # WORKER NODE CONFIGURATION
+  #############################################################################
+  workerGroupSpecs:
+  - replicas: 1
+    minReplicas: 1
+    maxReplicas: 3
+    groupName: gpu-group
+    rayStartParams: {}
+    template:
+      spec:
+        containers:
+        - name: ray-worker
+          image: rayproject/ray:latest-gpu
+          resources:
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+              # Worker nodes also requesting GPU resources
+              nvidia.com/gpu: "1"
+            requests:
+              cpu: "2"
+              memory: "4Gi"
+              nvidia.com/gpu: "1"
